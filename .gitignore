@@ -1,0 +1,17 @@
+# Ignore Docker volumes
+volumes/
+
+# Ignore Docker images
+*.tar
+
+# Ignore Docker logs
+*.log
+
+# Ignore environment variable files
+.env
+
+# Ignore build artifacts
+build/
+
+# ETC
+.DS_Store

@@ -1,0 +1,115 @@
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
+
+services:
+  story-geth:
+    container_name: story-geth
+    image: piplabs/story-geth:${IMAGE_TAG__STORY_GETH}
+    restart: unless-stopped
+    stop_grace_period: 50s
+    entrypoint: >
+      sh -c 'geth "$$@"'
+    command:
+      - --datadir=/root/.story/geth/data
+      - --config=/root/.story/geth/config/geth.toml
+      - --${NETWORK}
+      - --syncmode=full
+      - --http
+      - --http.vhosts=*
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.api=web3,eth,txpool,net,engine,debug,admin
+      - --ws
+      - --ws.origins=*
+      - --ws.addr=0.0.0.0
+      - --ws.port=8546
+      - --ws.api=web3,eth,txpool,net,engine,debug,admin
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.vhosts=*
+      - --port=30304
+      - --discovery.port=30303
+      - --metrics
+      - --metrics.port=6060
+      - --metrics.addr=0.0.0.0
+    ports:
+      - 6060:6060
+      - 8545:8545
+      - 8546:8546
+      - 8551:8551
+      - '30304:30304/tcp'
+      - '30303:30303/udp'
+    volumes:
+      - ./config/geth/geth.toml:/root/.story/geth/config/geth.toml
+      - db-story-geth-data:/root/.story/geth
+    <<: *logging
+
+  story-node:
+    container_name: story-node
+    image: piplabs/story-node:${IMAGE_TAG__STORY_NODE}
+    restart: unless-stopped
+    stop_grace_period: 50s
+    depends_on:
+      - story-geth
+    entrypoint: >
+      sh -c 'cosmovisor run init --network $NETWORK && cosmovisor run run "$$@"'
+    command:
+      - --api-enable
+      - --api-address=0.0.0.0:1317
+      - --engine-jwt-file=/root/.story/geth/data/jwtsecret
+      - --engine-endpoint=http://story-geth:8551
+    ports:
+      - 1317:1317
+      - 26656:26656
+      - 26657:26657
+      - 26660:26660
+    volumes:
+      - db-story-geth-data:/root/.story/geth
+      - db-story-node-data:/root/.story/story/data
+      - db-story-node-config:/root/.story/story/config
+
+      - ./config/story/config.toml:/root/.story/story/config/config.toml
+      - ./config/story/story.toml:/root/.story/story/config/story.toml
+    <<: *logging
+
+  story-prometheus:
+    container_name: story-prometheus
+    image: prom/prometheus:${IMAGE_TAG__PROMETHEUS}
+    restart: unless-stopped
+    stop_grace_period: 50s
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - 9090:9090
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - db-story-prometheus:/prometheus
+    profiles:
+      - monitoring
+
+  story-grafana:
+    container_name: story-grafana
+    image: grafana/grafana:${IMAGE_TAG__GRAFANA}
+    restart: unless-stopped
+    stop_grace_period: 50s
+    depends_on:
+      - story-prometheus
+    ports:
+      - 3000:3000
+    volumes:
+      - db-story-grafana:/var/lib/grafana
+      - ./monitoring/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana.ini:/etc/grafana/grafana.ini
+    profiles:
+      - monitoring
+
+volumes:
+  db-story-geth-data:
+  db-story-node-data:
+  db-story-node-config:
+  db-story-prometheus:
+  db-story-grafana:
